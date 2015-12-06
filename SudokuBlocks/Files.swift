@@ -25,9 +25,14 @@ func loadFileHandler() -> String? {
         return nil
     }
     var s: String
-    do { s = try String(contentsOfURL:op.URL!, encoding: NSUTF8StringEncoding) }
-    catch { return nil }
-    
+    do {
+        s = try String(contentsOfURL:op.URL!, encoding: NSUTF8StringEncoding)
+    }
+    catch {
+        // this doesn't work, alert disappears with return..
+        // runAlert("Unable to load a puzzle from that file!")
+        return nil
+    }
     let vs = validatedPuzzleString(s)
     return vs
 }
@@ -45,45 +50,15 @@ func savePuzzleDataToFile(s: String) {
     sp.directoryURL = NSURL(string: d)
     sp.allowedFileTypes = ["txt"]
 
-    sp.runModal()
-    // op.orderOut()
-    // op.URL contains the user's choice
-    if sp.URL == nil {
-        return
-    }
-    let path = sp.URL!
-    do { try s.writeToURL(path, atomically:true,
-        encoding:NSUTF8StringEncoding) }
-    catch {  }
-}
-
-// this part probably need a TableView with keys and then pick
-// choices are easy, medium, hard, evil
-
-func getDatabasePuzzle(level: Difficulty) -> (String, String)? {
-    let path = NSBundle.mainBundle().pathForResource("db", ofType: "plist")
+    //sp.runModal()
     
-    // pretty confident, aren't we
-    let D = NSDictionary(contentsOfFile: path!)!
-    var kL = [String]()
-    for key in D.allKeys {
-        kL.append(String(key))
+    sp.beginWithCompletionHandler{ (result: Int) -> Void in
+        // Swift.print(result)
+        if result == NSFileHandlingPanelOKButton {
+            let exportedFileURL = sp.URL!
+            do { try s.writeToURL(exportedFileURL, atomically:true,
+                encoding:NSUTF8StringEncoding) }
+            catch { runAlert("Unable to save!") }
+        }
     }
-    
-    // filter kL based on Difficulty
-    switch level {
-    case .easy:
-        kL = kL.filter( { $0.characters.first == "z" } )
-    case .medium:
-        kL = kL.filter( { $0.characters.first == "m" } )
-    case .hard:
-        kL = kL.filter( { $0.characters.first == "h" } )
-    case .evil:
-        kL = kL.filter( { $0.characters.first == "e" } )
-    }
-    
-    let i = Int(arc4random_uniform(UInt32(kL.count)))
-    let key = String(kL[i])
-    let s = "\(D[key]!)"
-    return (key,s)
 }

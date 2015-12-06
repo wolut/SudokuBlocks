@@ -3,9 +3,21 @@ this file contains the two functions that modify the dataD
 *after* a puzzle has been loaded
 */
 
-import Foundation
+import Cocoa
 
 let nullSet = Set<Int>()
+
+/*
+This looks a little odd, but it provides acccess to the window controllers 
+from my plain Swift files
+I'm not sure what the right way to do this is...
+probably the window controllers just need to be informed when functions return
+*/
+
+let appDelegate = NSApplication.sharedApplication().delegate as! AppDelegate
+let mainWindowController = appDelegate.mainWindowController!
+let textWindowController = appDelegate.textWindowController!
+
 
 // definition for reference:
 // var moveL = [ (Int, MoveType, [String], Set<Int>) ] ()
@@ -14,6 +26,7 @@ let nullSet = Set<Int>()
 
 func respondToClick(key: String, point: NSPoint,
                     rect: CGRect, cmd: Bool) {
+    let dataD = currentPuzzle.dataD
     let x = point.x - rect.origin.x
     let y = point.y - rect.origin.y
     let n = indexOfTinyRectForPoint(x, y:y) + 1
@@ -44,23 +57,33 @@ func respondToClick(key: String, point: NSPoint,
         runAlert("There appears to be a problem with that move.")
         return
     }
-    dataD[key] = tmp
-    refreshScreen()
-    /* 
-
-    decided not to auto-clean now
-    applyConstraintsForFilledSquare(key)
-    
+    currentPuzzle.dataD[key] = tmp
+      
+    /*
+    let hintsFound = calculateHintsForThisPosition()
+    if !hintsFound {
+        // we just clicked and now there are no more hints
+        mainWindowController.hideHints()
+    }
+                        
+    mainWindowController.hideHints()
     */
+                        
+    refreshScreen()
 }
 
+
 // this function modifies the dataD
-func applyConstraintsForFilledSquare(key: String) {
+// returns the keys for squares that were changed
+
+func applyConstraintsForOneFilledSquare(key: String) -> [String] {
+    var dataD = currentPuzzle.dataD
     
     let st = dataD[key]!
+    var newFilledSquares = [String]()
     
     assert(!(st.count > 1),
-        "Cannot apply constraints for: \(key) with multiple values!")
+        "Cannot apply constraints for: \(key) \(st) with multiple values!")
     
     assert ((st.count > 0),
         "Received empty set for key: \(key)")
@@ -80,6 +103,9 @@ func applyConstraintsForFilledSquare(key: String) {
             tmp.remove(n)
             dataD[key] = tmp
             a2.append(key)
+            if tmp.count == 1 {
+                newFilledSquares.append(key)
+            }
         }
     }
     
@@ -88,19 +114,33 @@ func applyConstraintsForFilledSquare(key: String) {
         moveL.append( (n, move, a2, nullSet ))
     }
     
+    // dictionaries are *value* types, copied
+    currentPuzzle.dataD = dataD
+    return newFilledSquares
 }
 
-func applyConstraintsForAllFilledSquares() {
-    // decided to just go through the squares once..
-    var a = [String]()
-    for key in dataD.keys {
-        if dataD[key]!.count == 1 {
-            a.append(key)
-        }
-    }
+func applyConstraintsForFilledSquaresOnce() {
+    // go through the squares only once..
+    let a = getAllFilledSquares()
     for key in a {
-        applyConstraintsForFilledSquare(key)
+        applyConstraintsForOneFilledSquare(key)
     }
     refreshScreen()
 }
 
+func applyConstraintsForFilledSquaresExhaustively() {
+    var a = getAllFilledSquares()
+    while a.count > 0 {
+        let key = a.removeFirst()
+        let newFilledSquares = applyConstraintsForOneFilledSquare(key)
+        a += newFilledSquares
+    }
+    refreshScreen()
+}
+
+func resetPuzzle() {
+    Swift.print("reset")
+    currentPuzzle.dataD = currentPuzzle.start
+    applyConstraintsForFilledSquaresOnce()
+    refreshScreen()
+}

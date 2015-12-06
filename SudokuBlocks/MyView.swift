@@ -8,30 +8,18 @@ class MyView: NSView {
         NSBezierPath.fillRect(bounds)
         drawDividers()
         retrieveAndPlotData()
+        displayHints()
     }
     
+    // this means we draw starting from upper left
     override var flipped: Bool { return true }
     
+    // detect the clicks that affect blocks
     override func mouseDown(theEvent: NSEvent) {
-        /*
-        docs aren't particularly clear
-        by examining theEvent.modifierFlags.rawValue
-        
-        CommandKeyMask bit is set in 1048576
-        >>> bin(1048576)  # 2**20
-        '0b100000000000000000000'
-        
-        so... just do
-        1048576 & theEvent.modifierFlags.rawValue
-        if its non-zero, CommandKeyMask bit is set
-        
-        also saw 1048584
-        in Playground
-        1048584 & 1048576    // 1048576
-        */
-        
-        let n = theEvent.modifierFlags.rawValue
-        let f = ((n & 1048576) != 0)
+        // immediately turn off display of hints
+        setHintActive(false)
+                
+        let f = commandKeyWasPressed(theEvent)
         
         let q = theEvent.locationInWindow
         let p = self.convertPoint(q, fromView:self.superview)
@@ -45,4 +33,76 @@ class MyView: NSView {
             }
         }
     }
+    
+    // we do this to get key events
+    override var acceptsFirstResponder: Bool { return true }
+    
+    // detect CMD+z, spacebar and left & right arrows
+    @IBAction override func keyDown(theEvent: NSEvent) {
+        
+        super.keyDown(theEvent)
+        //Swift.print(theEvent.keyCode)
+        
+        if theEvent.keyCode == 6 && commandKeyWasPressed(theEvent) {
+            undoLastMove()
+            refreshScreen()
+            return
+        }
+        
+        let n = hintList.count
+        
+        if theEvent.keyCode == 49 {
+            calculateHintsForThisPosition()
+            // Swift.print("spacebar handler, \(hintList.count) hints, active: \(hintActive)")
+            
+            if hintActive {
+                // couldn't figure out yet how to save this reference
+                
+                let appDelegate = NSApplication.sharedApplication().delegate as! AppDelegate
+                if let mwc = appDelegate.mainWindowController as MainWindowController! {
+                    mwc.hideHints(self)
+                }
+            }
+            else {
+                let appDelegate = NSApplication.sharedApplication().delegate as! AppDelegate
+                if let mwc = appDelegate.mainWindowController as MainWindowController! {
+                    mwc.showHints()
+                }
+            }
+            refreshScreen()
+            return
+        }
+
+        if n == 0 {
+            Swift.print("no hintList")
+            return
+        }
+        
+        if theEvent.keyCode == 123 {
+            // Swift.print("left arrow handler")
+            // left arrow
+            if selectedHint == 0 {
+                selectedHint = n - 1
+            }
+            else {
+                selectedHint -= 1
+            }
+            refreshScreen()
+            return
+        }
+        
+        if theEvent.keyCode == 124 {
+            // Swift.print("right arrow handler")
+            // right arrow
+            if selectedHint == n - 1 {
+                selectedHint = 0
+            }
+            else {
+                selectedHint += 1
+            }
+            refreshScreen()
+            return
+        }
+    }
+    
 }

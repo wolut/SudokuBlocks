@@ -2,74 +2,62 @@ import Cocoa
 
 class MainWindowController: NSWindowController {
     
-    // I know these guys exist!
-    @IBOutlet weak var textField: NSTextField!
-    @IBOutlet weak var labelTextField: NSTextField!
+    // We know these guys exist!
     @IBOutlet weak var popUp: NSPopUpButton!
+    @IBOutlet weak var checkbox: NSButton!
+    @IBOutlet weak var mainWindowLabelTextField: NSTextField!
     
+    @IBOutlet weak var label1: NSTextField!
+    @IBOutlet weak var label2: NSTextField!
+    @IBOutlet weak var label3: NSTextField!
+    
+    let emptyString = ""
+
     override func windowDidLoad() {
         super.windowDidLoad()
-        //labelTextField.stringValue = "no puzzle yet"
         getRandomPuzzle(self)
-        // applyConstraintsForAllFilledSquares()
-        showCurrentState(self)
-        // showHint() 
+        // showCurrentState(self)
+        label1.textColor = colorForHintType(.one)
+        label2.textColor = colorForHintType(.two)
+        label3.textColor = colorForHintType(.three)
     }
     
     override var windowNibName: String {
         return "MainWindowController"
     }
 
-    // should show an alert on failure
-    @IBAction func loadText(sender: AnyObject) {
-        let s = textField.stringValue
-        // print("textField.stringValue: \(s)")
-        let result = loadPuzzleDataFromString(s)
-        if result {
-            labelTextField.stringValue = "custom puzzle"
-            showCurrentState(self)
-        }
-    }
-    
-    @IBAction func loadFile(sender: AnyObject) {
-        if let s = loadFileHandler() {
-            loadPuzzleDataFromString(s)
-            showCurrentState(self)
-        }
-    }
-
     @IBAction func requestClean(sender: AnyObject) {
-        applyConstraintsForAllFilledSquares()
-    }
-    
-    @IBAction func showCurrentState(sender: AnyObject) {
-        let s = getCurrentStateAsString()
-        textField.stringValue = s
+        applyConstraintsForFilledSquaresOnce()
+        hideHints(self)
         self.window!.display()
     }
     
-    @IBAction func writeToFile(sender: AnyObject) {
-        let s = getCurrentStateAsString()
-        savePuzzleDataToFile(s)
-    }
     
-    @IBAction func getRandomPuzzle(sender: AnyObject) {
+    @IBAction func requestExhaustiveClean(sender: AnyObject) {
+        applyConstraintsForFilledSquaresExhaustively()
+        hideHints(self)
+        self.window!.display()
+    }
         
+    @IBAction func getRandomPuzzle(sender: AnyObject) {
         // read popUp
         let a: [Difficulty] = [.easy, .medium, .hard, .evil]
         let level = a[popUp.indexOfSelectedItem]
-        let result = getDatabasePuzzle(level)
         
-        if (result == nil) { return }
+        let result = getRandomDatabasePuzzle(level)
+        if result == nil { return }
         
-        let (key, value) = result!
-        loadPuzzleDataFromString(value)
+        let (key, s) = result!
+        let p = constructPuzzleFromKeyAndString(key, string:s)
+        if p == nil { return }
+        currentPuzzle = p!
         
-        let s2 = getCurrentStateAsString()  // has newlines
-        textField.stringValue = s2
-        labelTextField.stringValue = key
-        unSelectTextField(textField)
-        self.window!.display()
+        resetLabelTextField()
+        if checkbox.state == NSOnState {
+            applyConstraintsForFilledSquaresOnce()
+        }
+        hideHints()
+        
     }
     
     @IBAction func undo(sender: AnyObject) {
@@ -77,24 +65,112 @@ class MainWindowController: NSWindowController {
         refreshScreen()
     }
     
-    @IBAction func setBreakpoint(sender: AnyObject) {
+    @IBAction func setNewBreakpoint(sender: AnyObject) {
         addNewBreakpoint()
     }
 
-    @IBAction func goToBreakpoint(sender: AnyObject) {
+    @IBAction func returnToLastBreakpoint(sender: AnyObject) {
         restoreLastBreakpoint()
     }
     
-    /*
-    
-    override func acceptsFirstResponder() -> Bool {
-        return true
+    @IBAction func reset(sender: AnyObject) {
+        if moveL.count == 0 {
+            return
+        }
+        resetPuzzle()
+        hideHints(self)
     }
     
-    @IBAction override func keyDown(theEvent: NSEvent) {
-        Swift.print(theEvent)
-        // check for CMD-z
+    func showHints() {
+        showHints(self)
+    }
+    
+    @IBAction func showHints(sender: AnyObject) {
+        setHintActive(true)
+        self.window!.display()
+    }
+        
+    @IBAction func hideHints(sender: AnyObject) {
+        setHintActive(false)    // in HintHelper, see above
+        label1.stringValue = emptyString
+        label2.stringValue = emptyString
+        label3.stringValue = emptyString
+        self.window!.display()
+    }
+    
+    // OK b/c different signature than the @IBAction
+    // can't call that one from Swift files  why??
+    func hideHints() {
+        hideHints(self)
+    }
+    
+    @IBAction func showHelp(sender: AnyObject) {
+        showHelpAsAlert()
+    }
+    
+    @IBAction func showHintHelp(sender: AnyObject) {
+        showHintHelpAsAlert()
     }
 
-    */
+    @IBAction func showTextWindow(sender: AnyObject) {
+        let appDelegate = NSApplication.sharedApplication().delegate as! AppDelegate
+        
+        if let textWindowController = appDelegate.textWindowController {
+            textWindowController.showCurrentState()
+         }
+    }
+    
+    @IBAction func hideTextWindow(sender: AnyObject) {
+        //let appDelegate = NSApplication.sharedApplication().delegate as! AppDelegate
+        
+        if let w = textWindowController.window {
+            w.orderOut(self)
+        }
+    }
+    
+    func resetLabelTextField() {
+        mainWindowLabelTextField.stringValue  = currentPuzzle.title
+    }
+    
+    @IBAction func labelTextFieldEdited(sender: AnyObject) {
+        let s = mainWindowLabelTextField.stringValue
+        let result = getDatabasePuzzleForRequestedKey(s)
+        if nil != result {
+            
+            let (key, s) = result!
+            let p = constructPuzzleFromKeyAndString(key, string:s)
+            if p == nil { return }
+            currentPuzzle = p!
+            
+            resetLabelTextField()
+            
+            let c = String(key.characters.first!)
+            if let i = ["z","m","h","e"].indexOf(c) {
+                popUp.selectItemAtIndex(Int(i))
+            } else {
+                popUp.selectItemAtIndex(0)
+            }
+            
+            if checkbox.state == NSOnState {
+                applyConstraintsForFilledSquaresOnce()
+            }
+            hideHints()
+        } else {
+            runAlert("No puzzle with that title!")
+            resetLabelTextField()
+        }
+        // this doesn't work at present
+        unSelectTextField(mainWindowLabelTextField, controller: self)
+        // focusOnPuzzleView()
+    }
+    
+    @IBAction func checkPuzzle(sender: AnyObject) {
+        if let group = currentPuzzle.validate() {
+            let s = group.joinWithSeparator(" ")
+            runAlert("Found a problem: \n\(s)")
+        }
+        else {
+            runAlert("OK: no problems found", style: .InformationalAlertStyle)
+        }
+    }
 }
